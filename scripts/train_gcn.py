@@ -2,10 +2,13 @@ import torch
 import sys
 import torch.nn as nn
 import torch.optim as optim
+import numpy as np
+import pandas as pd
 from torch.utils.data import Dataset, DataLoader
 
-sys.path.append('../model')
-from class_GCN import GCN_LSTM
+sys.path.append('../model/')
+sys.path.append('../utils/')
+from prepare_data import prepare_input
 
 # Define hyperparameters
 input_size = 10
@@ -14,6 +17,16 @@ output_size = 5
 batch_size = 32
 learning_rate = 0.001
 num_epochs = 10
+nadj = ['euc','con','func']
+
+# Define other parameters
+xfile = '../data/processed/0620x.npy'
+yfile = '../data/processed/0620y.npy'
+adjfile = '../data/processed/adjlist.csv'
+historyfile = '../data/processed/history.npy'
+weatherfile = '../data/processed/weather.np'
+losfile = '../data/processed/los.npy'
+
 
 device = torch.device('cuda:0' if torch.cuda.is_available() else "cpu")
 
@@ -27,11 +40,15 @@ loss_fn = nn.MSELoss()
 # Define the optimizer
 optimizer = optim.Adam(net.parameters(), lr=learning_rate)
 
-# Create an instance of your custom dataset
-dataset = MyDataset(input_data, target_data)
+# Read in and prepare dataset
+x = np.load(xfile)
+y = np.load(yfile)
+adj = pd.read_csv(adjfile)
+history = np.load(historyfile)
+weather = np.load(weatherfile)
+los = np.load(losfile)
 
-# Create a DataLoader
-dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
+train_loader,val_loader,test_loader,adj = prepare_input(x,y,adj,nadj,history,weather,los,device)
 
 # Training loop
 for epoch in range(num_epochs):
