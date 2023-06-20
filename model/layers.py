@@ -46,23 +46,36 @@ class GCNLayer(nn.Module):
     def __init__(self, nfeat, nhid, nout, dropout=0.5):
         super(GCNLayer, self).__init__()
 
-        self.gc1 = GCNConv(nfeat, nhid)
-        self.gc2 = GCNConv(nhid, nout)
+        self.hid = nhid
+
+        self.gc1 = GCNConv(nfeat, nhid, node_dim=1)
+        self.gc2 = GCNConv(nhid, nout, node_dim=1)
 
         self.dropout = dropout
 
-    def forward(self, x, adj):
+    def forward(self, x, adj, device):
         """
         adj: Adjancency matrix tensor. Shape n_station,n_station
         """
+        batch_time, stations, features = x.size()
+        if len(adj.size()) == 2:
+            nadj = 1
+            adj = adj.unsqueeze(2)
+        else:
+            _,_,nadj = adj.size()
 
-        # Convert adjacency matrix to edge index and edge weights
-        edge = adj.nonzero()
-        edge_index = edge.t().contiguous()
-        edge_weight = adj[edge[:,0],edge[:,1]]
+        gc_out = torch.zeros(batch_time, stations, self.hid).to(device)
+        for i in range(nadj):
+            # Convert adjacency matrix to edge index and edge weights
+            edge = adj[:,:,i].nonzero()
+            edge_index = edge.t().contiguous()
+            edge_weight = adj[:,:,i][edge[:,0],edge[:,1]]
 
-        x = F.relu(self.gc1(x, edge_index, edge_weight))
-        x = F.dropout(x, p=self.dropout, training=self.training)
-        out = self.gc2(x, adj)
-        # out = F.log_softmax(x, dim=1)
-        return out
+            x1 = F.relu(self.gc1(x, edge_index, edge_weight))
+            x2 = F.dropout(x1, p=self.dropout, training=self.training)
+            out = F.relu(self.gc2(x2, edge_index, edge_weight))
+            out = F.dropout(out, p=self.dropout, training=self.training)
+            gc_out += out
+            # out = F.log_softmax(x, dim=1)
+        gc_out = gc_out / nadj
+        return gc_out

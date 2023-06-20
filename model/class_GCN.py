@@ -5,7 +5,7 @@ from layers import GCNLayer
 from torch_geometric.nn import GCNConv
 
 class GCN_LSTM(nn.Module):
-    def __init__(self, n_features, n_stations, n_time, hid_g, hid_fc, hid_l, n_timestamps, meanonly, homo, ndemo, nadj,dropout=0.5):
+    def __init__(self, n_features, n_stations, hid_g, hid_fc, hid_l, meanonly, homo, nadj, device, dropout=0.5):
         super(GCN_LSTM, self).__init__()
 
         self.n_features = n_features
@@ -13,11 +13,9 @@ class GCN_LSTM(nn.Module):
         self.n_hid_g = hid_g
         self.n_hid_fc = hid_fc
         self.n_hid_l = hid_l
-        self.n_timestamps = n_timestamps
         self.dropout = dropout
         self.meanonly = meanonly
         self.homo = homo
-        self.ntime = n_time
         self.nadj = nadj
 
         ###################################
@@ -50,24 +48,20 @@ class GCN_LSTM(nn.Module):
             mult = 2
         self.final = nn.Linear(hid_fc, n_stations*mult)
 
-        # layers processing time-independent quantities
-        if ndemo != 0:
-            self.gcs = GCNConv(ndemo, n_time*mult)
-
         # History
         self.recent_on_history_mean = nn.Linear(hid_fc, n_stations)
 
-        # Weather
-        self.weather_weights_mean = nn.Parameter(torch.rand((n_time, 2*n_stations)))
+        # # Weather
+        # self.weather_weights_mean = nn.Parameter(torch.rand((n_time, 2*n_stations)))
 
-        # Level of Service
-        self.los_weights_mean = nn.Parameter(torch.rand(n_time, n_stations))
+        # # Level of Service
+        # self.los_weights_mean = nn.Parameter(torch.rand(n_time, n_stations))
 
         if (not self.meanonly):
             self.recent_on_history_var = nn.Linear(hid_fc, n_stations)
-            self.weather_weights_var = nn.Parameter(torch.rand((n_time, 2*n_stations)))
+            # self.weather_weights_var = nn.Parameter(torch.rand((n_time, 2*n_stations)))
 
-    def forward(self, x, adj, history, xs, weather, los, qod, device):
+    def forward(self, x, adj, history, weather, los, device):
         """
         qod: batch_size,n_time
         xs: batch_size,ndemo
@@ -84,7 +78,7 @@ class GCN_LSTM(nn.Module):
         x = self.batchnorm(x)
 
         # Apply graph convolution layer
-        out = self.gcn(x, adj)
+        out = self.gcn(x, adj, device)
 
         # Concatenate stations for timesteps
         out = out.view(batch_size, timesteps, -1) 
@@ -106,49 +100,31 @@ class GCN_LSTM(nn.Module):
         # Layer of everything
         gl_out = self.final(out)
 
-        # Demographics, points of interest, etc (time-independent quantities)
-        ntime = qod.shape[1]
-        if xs is not None:
-            if self.meanonly:
-                gcs_out = torch.zeros(stations, self.ntime).to(device)
-            else:
-                gcs_out = torch.zeros(stations, 2*self.ntime).to(device)
-            for j in range(self.nadj):
-                gcs_out += F.dropout(F.relu(self.gcs(xs,adj[:,:,j])), self.dropout, training=self.training)
-            gcs_out = gcs_out/self.nadj
-            gcs_mean = torch.matmul(qod, torch.transpose(gcs_out[:,:ntime],0,1))
-        else:
-            gcs_mean = torch.zeros(batch_size, stations).to(device)
-
         # History and weather
         recent_on_history_weights_mean = torch.sigmoid(self.recent_on_history_mean(out)).view(batch_size, stations)
         history = torch.squeeze(history)
         history_mean = history * recent_on_history_weights_mean  
 
-        weather = weather.view(batch_size, 1, 2)
-        weather_mean = torch.squeeze(torch.bmm(weather, torch.mm(qod, self.weather_weights_mean).view(batch_size, 2, stations)))  
+        # weather = weather.view(batch_size, stations, 2)
+        # weather_mean = self.weather_weights_mean 
 
         if not self.meanonly:
             recent_on_history_weights_var = torch.sigmoid(self.recent_on_history_var(out)).view(batch_size, stations)
             history_var = history * recent_on_history_weights_var
-            weather_var = torch.squeeze(torch.bmm(weather, torch.mm(qod, self.weather_weights_var).view(batch_size, 2, stations)))
-            if xs is not None:
-                gcs_var = torch.matmul(qod, torch.transpose(gcs_out[:,self.ntime:],0,1))
-            else:
-                gcs_var = torch.zeros(batch_size, stations).to(device)
+            # weather_var = torch.squeeze(torch.bmm(weather, torch.mm(qod, self.weather_weights_var).view(batch_size, 2, stations)))
 
         # Level of Service
-        los = torch.squeeze(los)
-        los_mean = los * torch.mm(qod, self.los_weights_mean)
+        # los = torch.squeeze(los)
+        # los_mean = los * torch.mm(qod, self.los_weights_mean)
 
         # Combine everything
         if (self.meanonly)|(self.homo>0):
             gl_out = gl_out.view(batch_size, -1, 1)
-            out_mean = F.softplus(gl_out[:,:,0]+history_mean+gcs_mean+weather_mean+los_mean)
+            out_mean = F.softplus(gl_out[:,:,0]+history_mean)
             return out_mean
         else:
             gl_out = gl_out.view(batch_size, -1, 2)
-            out_mean = F.softplus(gl_out[:,:,0]+gcs_mean+history_mean+los_mean+weather_mean)
-            out_var = F.softplus(gl_out[:,:,1]+gcs_var+history_var+weather_var)
+            out_mean = F.softplus(gl_out[:,:,0]+history_mean)
+            out_var = F.softplus(gl_out[:,:,1]+history_var)
             current_out = torch.cat((out_mean, out_var), 0)
             return current_out

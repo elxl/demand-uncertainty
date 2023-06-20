@@ -8,7 +8,7 @@ from torch.utils.data import DataLoader, Subset
 from class_dataset import NY_Data
 
     
-def prepare_input(x, y, adj, nadj, history, weather, los, device, train=0.8, val=0.1, test=0.1, random=False):
+def prepare_input(x, y, adj, nadj, history, weather, los, device, train=0.8, val=0.1, test=0.1, random=False, batch_size = 32):
 
     #----------Input--------------#
     
@@ -35,7 +35,6 @@ def prepare_input(x, y, adj, nadj, history, weather, los, device, train=0.8, val
         test_dataset = Subset(dataset,test_indices)
 
     # Create separate DataLoaders for each set
-    batch_size = 32
 
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
@@ -52,13 +51,13 @@ def prepare_input(x, y, adj, nadj, history, weather, los, device, train=0.8, val
             pass
 
     # Filter to common stations only and calculate degree matrix and adj matrix for models
-    stations = len(adj)
+    stations = x.shape[2]
     deg = {}
     adj = {}
     
     for temp in w.keys():
         w[temp] = w[temp] / np.max(w[temp])
-        deg[temp] = np.sum(w[temp]+np.identity(len(stations)), axis=0)
+        deg[temp] = np.sum(w[temp]+np.identity(stations), axis=0)
         adj[temp] = np.matmul(np.matmul(scipy.linalg.fractional_matrix_power(np.diag(deg[temp]), -0.5), 
             w[temp]+np.identity(len(deg[temp]))),
             scipy.linalg.fractional_matrix_power(np.diag(deg[temp]), 0.5))

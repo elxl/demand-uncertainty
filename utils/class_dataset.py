@@ -2,7 +2,7 @@ from torch.utils.data import Dataset
 
 class NY_Data(Dataset):
 
-	def __init__(self, x, y, adj, history, weather, los):
+	def __init__(self, x, y, history, weather, los):
 		self.x = x
 		self.y = y
 		self.history = history
@@ -15,6 +15,6 @@ class NY_Data(Dataset):
 
 	def __getitem__(self, idx):
 
-		sample = tuple(self.x[idx],self.y[idx],self.history[idx],self.weather[idx],self.los[idx])
+		sample = tuple([self.x[idx],self.y[idx],self.history[idx],self.weather[idx],self.los[idx]])
 
 		return sample
