@@ -57,8 +57,9 @@ weather = data['weather']
 los = data['los']
 
 train_loader,val_loader,test_loader,adj_torch = prepare_input(x,y,adj,nadj,history,weather,los,device,batch_size=batch_size)
+batch_number = len(train_loader)
 print('Start training ...')
-print(f"Training sample batches:{len(train_loader)}")
+print(f"Training sample batches:{batch_number}")
 
 # Training loop
 loss_history = []
@@ -112,14 +113,27 @@ for epoch in range(num_epochs):
             'epoch': epoch,
             'model_state_dict': net.state_dict(),
             'optimizer_state_dict': optimizer.state_dict(),
-            'loss': running_loss,
+            'average batch loss': running_loss/batch_number,
             }, SAVEPATH)
 
     # Print the average loss for the epoch and evaluate
-    print('Ep:', epoch, 'Loss:',running_loss)
+    print('Ep:', epoch, 'Loss:',running_loss/batch_number)
 
     # Evaluate every n epoches
-    # if epoch%5 == 0:
-    #     print('Ep:', i, 'Loss:',running_loss)
-    #     net.eval()
-    #     # TODO: evaluation
+    if epoch%5 == 0:
+        net.eval()
+        eval_loss = 0
+        for j,evaldata in enumerate(val_loader):
+            batch_x, batch_y, batch_history, batch_weather, batch_los = traindata
+
+            batch_x = batch_x.float()
+            batch_y = torch.squeeze(batch_y).float()
+            batch_history = batch_history.float()
+
+            outputs = net(batch_x, adj_torch, batch_history, batch_weather, batch_los, device)
+            loss = loss_fn(output_loc, output_scale, batch_y)
+            eval_loss += loss
+        
+        print('Ep:', epoch, 'Evaluation loss:',eval_loss/len(val_loader))
+
+
