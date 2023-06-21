@@ -31,12 +31,8 @@ dist = 'tnorm'
 
 # Define other parameters
 SAVEPATH = "../weights/model.pt"
-xfile = '../data/processed/0620x.npy'
-yfile = '../data/processed/0620y.npy'
-adjfile = '../data/processed/adjlist.csv'
-historyfile = '../data/processed/history.npy'
-weatherfile = '../data/processed/weather.npy'
-losfile = '../data/processed/los.npy'
+filepath = 'data/processed/0620_diff.npz'
+adjfile = 'data/precessed/adjlist.csv'
 
 
 device = torch.device('cuda:0' if torch.cuda.is_available() else "cpu")
@@ -52,12 +48,13 @@ loss_fn = MVELoss(dist)
 optimizer = optim.Adam(net.parameters(), lr=learning_rate, weight_decay=weight_decay)
 
 # Read in and prepare dataset
-x = np.load(xfile)
-y = np.load(yfile)
+data = data = np.load('data/processed/0620_diff.npz')
+x = data['x']
+y = data['y']
 adj = pd.read_csv(adjfile)
-history = np.load(historyfile)
-weather = np.load(weatherfile)
-los = np.load(losfile)
+history = data['history']
+weather = data['weather']
+los = data['los']
 
 train_loader,val_loader,test_loader,adj_torch = prepare_input(x,y,adj,nadj,history,weather,los,device,batch_size=batch_size)
 print('Start training ...')
