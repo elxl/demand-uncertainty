@@ -29,7 +29,11 @@ def post_process_dist(dist, loc, scale):
 def post_process_pi(dist, loc, scale, z):
     
     if dist == "lognorm":
-        lb, ub = lognorm.interval(z, loc, scale)
+        s = np.exp(loc)
+        shape = scale
+        lognorm_dist = lognorm(s=shape, scale=s)
+        lb, ub = lognorm_dist.interval(z)
+        # lb, ub = lognorm.interval(z, loc, scale)
     elif dist == 'tnorm':
         lb, ub = norm.interval(z, loc, scale)
         lb = lb * (lb>0)
@@ -102,11 +106,10 @@ def evaluate(net, loss_fn, adj_torch, dist, dataloader, z, device, batch_size):
                 test_out_var = np.concatenate((test_out_var, outputs[batch_new:,:].cpu().detach().numpy()), axis=0)
                 y_eval = np.concatenate((y_eval, batch_y.cpu().numpy()), axis=0)        
     val_out_predict = post_process_dist(dist, test_out_mean, test_out_var)
-
     # Point error
     mae = MeanAbsoluteError()
     val_mae = mae(torch.from_numpy(val_out_predict.flatten()), torch.from_numpy(y_eval.flatten()))
-    val_mape = np.mean(target.flatten())
+    val_mape = val_mae/np.mean(y_eval.flatten())
 
     lb, ub = post_process_pi(dist, test_out_mean, test_out_var, z)
     val_mpiw, val_picp = eval_pi(lb, ub, y_eval)

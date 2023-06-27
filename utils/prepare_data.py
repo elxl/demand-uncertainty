@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 import pickle as pkl
 from torch.utils.data import DataLoader, Subset
-from class_dataset import NY_Data
+from .class_dataset import NY_Data
 
     
 def prepare_input(x, y, adj, nadj, history, weather, los, device, train=0.8, val=0.1, test=0.1, random=False, batch_size = 32):

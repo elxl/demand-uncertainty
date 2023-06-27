@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from layers import GCNLayer
+from .layers import GCNLayer
 from torch_geometric.nn import GCNConv
 
 class GCN_LSTM(nn.Module):
