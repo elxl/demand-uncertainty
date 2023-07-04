@@ -36,9 +36,18 @@ def prepare_input(x, y, adj, nadj, history, weather, los, device, train=0.8, val
 
     # Create separate DataLoaders for each set
 
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
-    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
+    if num_train!=0:
+      train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+    else:
+      train_loader = None
+    if num_val!=0:
+      val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
+    else:
+      val_loader = None
+    if num_test!=0:
+      test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
+    else:
+      test_loader = None
 
 
     #-----------Adjancent Matirx----------#
