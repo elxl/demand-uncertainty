@@ -115,3 +115,26 @@ def evaluate(net, loss_fn, adj_torch, dist, dataloader, z, device, batch_size):
     val_mpiw, val_picp = eval_pi(lb, ub, y_eval)
         
     return eval_loss/eval_num, val_mae.item(), val_mape.item(), val_mpiw, val_picp
+
+def evaluate_output(out_mean, out_std, out_true, loss_fn, dist, z):
+
+    num = out_mean.shape[1]
+    loss = loss_fn(out_mean, out_std, out_true)
+    loss = loss.item()
+
+    out_predict = post_process_dist(dist, out_mean, out_std)
+
+    # convert data format
+    out_mean = out_mean.cpu().numpy()
+    out_std = out_std.cpu().numpy()
+    out_true = out_true.cpu().numpy()
+    out_predict = out_predict.cpu().numpy()
+
+    mae = MeanAbsoluteError()
+    predict_mae = mae(torch.from_numpy(out_predict.flatten()), torch.from_numpy(out_true.flatten()))
+    predict_mape = predict_mae/np.mean(out_true.flatten())
+
+    lb, ub = post_process_pi(dist, out_mean, out_std, z)
+    val_mpiw, val_picp = eval_pi(lb, ub, out_true)
+        
+    return loss/num, predict_mae.item(), predict_mape.item(), val_mpiw, val_picp   
