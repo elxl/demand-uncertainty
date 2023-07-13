@@ -5,9 +5,9 @@ import numpy as np
 import pandas as pd
 from torch.utils.data import Dataset, DataLoader
 
-from ..utils.prepare_data import prepare_input
-from ..utils.class_loss import MVELoss
-from ..model.class_GCN import GCN_LSTM
+from utils.prepare_data import prepare_input
+from utils.class_loss import MVELoss
+from model.class_GCN import GCN_LSTM
 
 # Define hyperparameters
 n_features = 2
