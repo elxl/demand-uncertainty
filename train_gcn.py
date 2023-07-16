@@ -28,7 +28,7 @@ z = 0.95
 
 # Define other parameters
 SAVEPATH = "../weights/model.pt"
-filepath = '../data/processed/0620_diff.npz'
+filepath = '../data/processed/1906_diff.npz'
 adjfile = '../data/processed/adjlist.csv'
 
 
