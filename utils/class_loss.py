@@ -8,7 +8,7 @@ class MVELoss(nn.Module):
         super().__init__()
         self.dist = dist
         
-    def forward(self, output_loc, output_scale=None, target=None):
+    def forward(self, output_loc, output_scale=None, target=None, pi=None):
         
         loc = torch.flatten(output_loc)
         if output_scale is not None:
@@ -37,17 +37,10 @@ class MVELoss(nn.Module):
             loss = d.log_prob(t)
             
         elif self.dist == 'nb':
-            
-            def nb_nll_loss(y,n,p):
-                """
-                y: true values
-                y_mask: whether missing mask is given
-                """
-                nll = torch.lgamma(n) + torch.lgamma(y+1) - torch.lgamma(n+y) - n*torch.log(p) - y*torch.log(1-p)
-                return torch.sum(nll)
-            
-            loss = nb_nll_loss(t, loc, scale) # check scale constraints
-            
+            d = torch.distributions.NegativeBinomial(loc,scale)           
+            loss = d.log_prob(t)
+        elif self.dist == 'zinb':
+            pass
         else:
             print("Dist error")
             return 0

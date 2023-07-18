@@ -17,6 +17,7 @@ hid_fc = 64
 hid_l = 64
 meanonly = False
 homo = 0
+zinflate = 0
 batch_size = 32
 learning_rate = 0.001
 weight_decay = 0.001
@@ -35,7 +36,7 @@ adjfile = '../data/processed/adjlist.csv'
 device = torch.device('cuda:0' if torch.cuda.is_available() else "cpu")
 
 # Create the network
-net = GCN_LSTM(n_features,n_stations,hid_g,hid_fc,hid_l,meanonly,homo,nadj,device,dropout)
+net = GCN_LSTM(n_features,n_stations,hid_g,hid_fc,hid_l,meanonly,homo,zinflate,nadj,dist,device,dropout)
 net = net.to(device)
 
 # Define the loss function
@@ -90,14 +91,27 @@ for epoch in range(1,num_epochs+1):
         outputs = net(batch_x, adj_torch, batch_history, batch_weather, batch_los, device)
 
         # Compute the loss
-        if outputs.shape[0]!=2*batch_size:
-            batch_new = int((outputs.shape[0])/2)
-            output_loc = outputs[:batch_new,:]
-            output_scale = outputs[batch_new:,:]
+        if outputs.shape[0]!=(2*batch_size + zinflate*batch_size):
+            if zinflate == 0:
+                batch_new = int((outputs.shape[0])/2)
+                output_loc = outputs[:batch_new,:]
+                output_scale = outputs[batch_new:,:]
+                output_pi = None
+            else:
+                batch_new = int((outputs.shape[0])/3)
+                output_loc = outputs[:batch_new,:]
+                output_scale = outputs[batch_new:2*batch_new,:]
+                output_pi = outputs[2*batch_new:,:]           
         else:
-            output_loc = outputs[:batch_size,:]
-            output_scale = outputs[batch_size:,:]
-        loss = loss_fn(output_loc, output_scale, batch_y)
+            if zinflate == 0:
+                output_loc = outputs[:batch_size,:]
+                output_scale = outputs[batch_size:,:]
+                output_pi = None
+            else:
+                output_loc = outputs[:batch_size,:]
+                output_scale = outputs[batch_size:2*batch_size,:]
+                output_pi = outputs[2*batch_size:,:]
+        loss = loss_fn(output_loc, output_scale, batch_y,output_pi)
 
         # Backward pass and optimization
         loss.backward()
@@ -127,15 +141,28 @@ for epoch in range(1,num_epochs+1):
             batch_weather.to(device), batch_los.to(device)
 
         outputs = net(batch_x, adj_torch, batch_history, batch_weather, batch_los, device)
-        if outputs.shape[0]!=2*batch_size:
-            batch_new = int((outputs.shape[0])/2)
-            output_loc = outputs[:batch_new,:]
-            output_scale = outputs[batch_new:,:]
+        if outputs.shape[0]!=(2*batch_size + zinflate*batch_size):
+            if zinflate == 0:
+                batch_new = int((outputs.shape[0])/2)
+                output_loc = outputs[:batch_new,:]
+                output_scale = outputs[batch_new:,:]
+                output_pi = None
+            else:
+                batch_new = int((outputs.shape[0])/3)
+                output_loc = outputs[:batch_new,:]
+                output_scale = outputs[batch_new:2*batch_new,:]
+                output_pi = outputs[2*batch_new:,:]           
         else:
-            output_loc = outputs[:batch_size,:]
-            output_scale = outputs[batch_size:,:]
+            if zinflate == 0:
+                output_loc = outputs[:batch_size,:]
+                output_scale = outputs[batch_size:,:]
+                output_pi = None
+            else:
+                output_loc = outputs[:batch_size,:]
+                output_scale = outputs[batch_size:2*batch_size,:]
+                output_pi = outputs[2*batch_size:,:]
+        loss = loss_fn(output_loc, output_scale, batch_y,output_pi)
 
-        loss = loss_fn(output_loc, output_scale, batch_y)
         eval_loss += loss.item()
 
     loss_eval.append(eval_loss/eval_num)

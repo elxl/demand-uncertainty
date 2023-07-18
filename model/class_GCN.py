@@ -5,7 +5,7 @@ from .layers import GCNLayer
 from torch_geometric.nn import GCNConv
 
 class GCN_LSTM(nn.Module):
-    def __init__(self, n_features, n_stations, hid_g, hid_fc, hid_l, meanonly, homo, nadj, device, dropout=0.5):
+    def __init__(self, n_features, n_stations, hid_g, hid_fc, hid_l, meanonly, homo, zinflate, nadj, dist, device, dropout=0.5):
         super(GCN_LSTM, self).__init__()
 
         self.n_features = n_features
@@ -16,7 +16,9 @@ class GCN_LSTM(nn.Module):
         self.dropout = dropout
         self.meanonly = meanonly
         self.homo = homo
+        self.zinflate = zinflate
         self.nadj = nadj
+        self.dist = dist
 
         ###################################
         #-------- Encoding layers --------#
@@ -44,8 +46,10 @@ class GCN_LSTM(nn.Module):
         # layers bringing everything together
         if meanonly | (homo>0):
             mult = 1
-        else:
+        elif zinflate == 0:
             mult = 2
+        else:
+            mult = 3
         self.final = nn.Linear(hid_fc, n_stations*mult)
 
         # History
@@ -60,6 +64,8 @@ class GCN_LSTM(nn.Module):
         if (not self.meanonly):
             self.recent_on_history_var = nn.Linear(hid_fc, n_stations)
             # self.weather_weights_var = nn.Parameter(torch.rand((n_time, 2*n_stations)))
+        if self.zinflate:
+            self.recent_on_history_pi = nn.Linear(hid_fc, n_stations)
 
     def forward(self, x, adj, history, weather, los, device):
         """
@@ -112,6 +118,9 @@ class GCN_LSTM(nn.Module):
             recent_on_history_weights_var = torch.sigmoid(self.recent_on_history_var(out)).view(batch_size, stations)
             history_var = history * recent_on_history_weights_var
             # weather_var = torch.squeeze(torch.bmm(weather, torch.mm(qod, self.weather_weights_var).view(batch_size, 2, stations)))
+        if self.zinflate:
+            recent_on_history_weights_pi = torch.sigmoid(self.recent_on_history_pi(out)).view(batch_size, stations)
+            history_pi = history * recent_on_history_weights_pi           
 
         # Level of Service
         # los = torch.squeeze(los)
@@ -122,9 +131,19 @@ class GCN_LSTM(nn.Module):
             gl_out = gl_out.view(batch_size, -1, 1)
             out_mean = F.softplus(gl_out[:,:,0]+history_mean)
             return out_mean
-        else:
+        elif self.zinflate == 0:
             gl_out = gl_out.view(batch_size, -1, 2)
             out_mean = F.softplus(gl_out[:,:,0]+history_mean)
-            out_var = F.softplus(gl_out[:,:,1]+history_var)
+            if self.dist in ['norm','tnorm','lognorm']:
+              out_var = F.softplus(gl_out[:,:,1]+history_var)
+            elif self.dist == 'nb':
+              out_var = F.sigmoid(gl_out[:,:,1]+history_var) - 1e-5
             current_out = torch.cat((out_mean, out_var), 0)
             return current_out
+        else:
+            gl_out = gl_out.view(batch_size, -1, 3)
+            out_mean = F.softplus(gl_out[:,:,0]+history_mean)
+            out_var = F.softplus(gl_out[:,:,1]+history_var)
+            out_pi = F.sigmoid(gl_out[:,:,2]+history_pi)
+            current_out = torch.cat((out_mean, out_var, out_pi), 0)
+            return current_out          
