@@ -5,7 +5,7 @@ from .layers import GCNLayer
 from torch_geometric.nn import GCNConv
 
 class GCN_LSTM(nn.Module):
-    def __init__(self, n_features, n_stations, hid_g, hid_fc, hid_l, meanonly, homo, zinflate, nadj, dist, device, dropout=0.5):
+    def __init__(self, n_features, n_stations, hid_g, hid_fc, hid_l, meanonly, homo, nadj, dist, device, dropout=0.5):
         super(GCN_LSTM, self).__init__()
 
         self.n_features = n_features
@@ -16,7 +16,6 @@ class GCN_LSTM(nn.Module):
         self.dropout = dropout
         self.meanonly = meanonly
         self.homo = homo
-        self.zinflate = zinflate
         self.nadj = nadj
         self.dist = dist
 
@@ -44,12 +43,13 @@ class GCN_LSTM(nn.Module):
         ####################################
 
         # layers bringing everything together
-        if meanonly | (homo>0):
+        if meanonly | (homo>0) | dist in ['poission']:
             mult = 1
-        elif zinflate == 0:
+        elif dist in ['norm','nb','zipoission','tnorm','lognorm']:
             mult = 2
-        else:
+        elif dist in ['zinb']:
             mult = 3
+        self.mult = mult
         self.final = nn.Linear(hid_fc, n_stations*mult)
 
         # History
@@ -61,10 +61,10 @@ class GCN_LSTM(nn.Module):
         # # Level of Service
         # self.los_weights_mean = nn.Parameter(torch.rand(n_time, n_stations))
 
-        if (not self.meanonly):
+        if dist in ['norm','nb','zipoission','tnorm','lognorm']:
             self.recent_on_history_var = nn.Linear(hid_fc, n_stations)
             # self.weather_weights_var = nn.Parameter(torch.rand((n_time, 2*n_stations)))
-        if self.zinflate:
+        if dist in ['zinb']:
             self.recent_on_history_pi = nn.Linear(hid_fc, n_stations)
 
     def forward(self, x, adj, history, weather, los, device):
@@ -114,11 +114,11 @@ class GCN_LSTM(nn.Module):
         # weather = weather.view(batch_size, stations, 2)
         # weather_mean = self.weather_weights_mean 
 
-        if not self.meanonly:
+        if self.dist in ['norm','nb','zipoission','tnorm','lognorm']:
             recent_on_history_weights_var = torch.sigmoid(self.recent_on_history_var(out)).view(batch_size, stations)
             history_var = history * recent_on_history_weights_var
             # weather_var = torch.squeeze(torch.bmm(weather, torch.mm(qod, self.weather_weights_var).view(batch_size, 2, stations)))
-        if self.zinflate:
+        if self.dist in ['zinb']:
             recent_on_history_weights_pi = torch.sigmoid(self.recent_on_history_pi(out)).view(batch_size, stations)
             history_pi = history * recent_on_history_weights_pi           
 
@@ -127,17 +127,18 @@ class GCN_LSTM(nn.Module):
         # los_mean = los * torch.mm(qod, self.los_weights_mean)
 
         # Combine everything
-        if (self.meanonly)|(self.homo>0):
+        if (self.meanonly)|(self.homo>0)|(self.dist in ['poission']):
             gl_out = gl_out.view(batch_size, -1, 1)
             out_mean = F.softplus(gl_out[:,:,0]+history_mean)
             return out_mean
-        elif self.zinflate == 0:
+        elif self.dist in ['norm','nb','zipoission','tnorm','lognorm']:
             gl_out = gl_out.view(batch_size, -1, 2)
             out_mean = F.softplus(gl_out[:,:,0]+history_mean)
             if self.dist in ['norm','tnorm','lognorm']:
               out_var = F.softplus(gl_out[:,:,1]+history_var)
-            elif self.dist == 'nb':
+            elif self.dist in ['nb','zipoission']:
               out_var = F.sigmoid(gl_out[:,:,1]+history_var) - 1e-5
+
             current_out = torch.cat((out_mean, out_var), 0)
             return current_out
         else:

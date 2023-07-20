@@ -3,6 +3,7 @@ import torch.nn as nn
 import numpy as np
 from scipy.stats import poisson, norm, laplace, lognorm, nbinom
 from scipy.optimize import curve_fit
+import statsmodels.api as sm
 from torch_geometric.nn.models.mlp import NoneType
 from torchmetrics import MeanAbsolutePercentageError, MeanAbsoluteError
 
@@ -27,6 +28,8 @@ def fit_dist(data, dist):
 
             return fitted_lambda
         res = np.apply_along_axis(poisson_fit,axis=2,arr=data)
+    elif dist == 'zinb':
+        pass
 
     return res
 
@@ -47,10 +50,12 @@ def post_process_dist(dist, loc, scale, pi=None):
     elif dist == 'poisson':
         out_predict = loc
 #         out_std = np.sqrt(loc)
+    elif dist == 'zipoisson':
+        out_predict = (1-pi)*loc
     elif dist == 'norm':
         out_predict = loc
     elif dist == 'nb':
-        out_predict = loc*scale
+        out_predict = loc*(1-scale)/(scale+1e-5)
     elif dist == 'zinb':
         pass
         
@@ -73,12 +78,16 @@ def post_process_pi(dist, loc, scale, z):
         lb, ub = laplace.interval(z, loc, scale)
     elif dist == 'poisson':
         lb,ub = poisson.interval(z, loc) 
+    elif dist == 'zipoisson':
+        lb = None
+        ub = None
     elif dist == 'norm':
         lb, ub = norm.interval(z, loc, scale)
     elif dist == 'nb':
         lb, ub = nbinom.interval(z, loc, scale)
     elif dist == 'zinb':
-        pass
+        lb = None
+        ub = None
 
     return lb, ub
 
@@ -114,12 +123,12 @@ def evaluate(net, loss_fn, adj_torch, dist, dataloader, z, device, batch_size):
             batch_weather.to(device), batch_los.to(device)
 
         outputs = net(batch_x, adj_torch, batch_history, batch_weather, batch_los, device)
-        if outputs.shape[0]!=(batch_size + (1-net.meanonly)*batch_size + net.zinflate*batch_size):
-            if net.meanonly:
+        if outputs.shape[0]!=net.mult*batch_size:
+            if net.mult == 1:
                 output_loc = outputs[:,:]
                 output_scale = None
                 output_pi = None
-            elif net.zinflate == 0:
+            elif net.mult == 2:
                 batch_new = int((outputs.shape[0])/2)
                 output_loc = outputs[:batch_new,:]
                 output_scale = outputs[batch_new:,:]
@@ -130,11 +139,11 @@ def evaluate(net, loss_fn, adj_torch, dist, dataloader, z, device, batch_size):
                 output_scale = outputs[batch_new:2*batch_new,:]
                 output_pi = outputs[2*batch_new:,:]           
         else:
-            if net.meanonly:
+            if net.mult == 1:
                 output_loc = outputs[:,:]
                 output_scale = None
-                output_pi = None             
-            if net.zinflate == 0:
+                output_pi = None
+            elif net.mult == 2:
                 output_loc = outputs[:batch_size,:]
                 output_scale = outputs[batch_size:,:]
                 output_pi = None
@@ -148,11 +157,11 @@ def evaluate(net, loss_fn, adj_torch, dist, dataloader, z, device, batch_size):
 
         # Get mean and variance
         if i == 0:
-            if net.meanonly:
+            if net.mult == 1:
                 test_out_mean = outputs[:,:].cpu().detach().numpy()
                 test_out_var = None
                 test_out_pi = None                
-            elif net.zinflate == 0:
+            elif net.mult == 2:
                 test_out_mean = outputs[:batch_size,:].cpu().detach().numpy()
                 test_out_var = outputs[batch_size:,:].cpu().detach().numpy()
                 test_out_pi = None
@@ -162,12 +171,12 @@ def evaluate(net, loss_fn, adj_torch, dist, dataloader, z, device, batch_size):
                 test_out_pi = outputs[2*batch_size:,:].cpu().detach().numpy()     
             y_eval = batch_y.cpu().numpy()
         else:
-            if outputs.shape[0]==(batch_size + (1-net.meanonly)*batch_size + net.zinflate*batch_size):
-                if net.meanonly:
+            if outputs.shape[0]!=net.mult*batch_size:
+                if net.mult == 1:
                     test_out_mean = np.concatenate((test_out_mean, outputs[:,:].cpu().detach().numpy()), axis=0)
                     test_out_var = None
                     test_out_pi = None
-                elif net.zinflate == 0:
+                elif net.mult == 2:
                     test_out_mean = np.concatenate((test_out_mean, outputs[:batch_size,:].cpu().detach().numpy()), axis=0)
                     test_out_var = np.concatenate((test_out_var, outputs[batch_size:,:].cpu().detach().numpy()), axis=0)
                     test_out_pi = None
@@ -177,11 +186,11 @@ def evaluate(net, loss_fn, adj_torch, dist, dataloader, z, device, batch_size):
                     test_out_pi = np.concatenate((test_out_var, outputs[2*batch_size:,:].cpu().detach().numpy()), axis=0)                   
                 y_eval = np.concatenate((y_eval, batch_y.cpu().numpy()), axis=0)
             else:
-                if net.meanonly:
+                if net.mult == 1:
                     test_out_mean = np.concatenate((test_out_mean, outputs[:,:].cpu().detach().numpy()), axis=0)
                     test_out_var = None
                     test_out_pi = None
-                elif net.zinflate == 0:
+                elif net.mult == 2:
                     batch_new = int((outputs.shape[0])/2)
                     test_out_mean = np.concatenate((test_out_mean, outputs[:batch_new,:].cpu().detach().numpy()), axis=0)
                     test_out_var = np.concatenate((test_out_var, outputs[batch_new:,:].cpu().detach().numpy()), axis=0)
@@ -199,7 +208,11 @@ def evaluate(net, loss_fn, adj_torch, dist, dataloader, z, device, batch_size):
     val_mape = val_mae/np.mean(y_eval.flatten())
 
     lb, ub = post_process_pi(dist, test_out_mean, test_out_var, z)
-    val_mpiw, val_picp = eval_pi(lb, ub, y_eval)
+    if lb is not None:
+        val_mpiw, val_picp = eval_pi(lb, ub, y_eval)
+    else:
+        val_mpiw = None
+        val_picp = None
         
     return eval_loss/eval_num, val_mae.item(), val_mape.item(), val_mpiw, val_picp
 
@@ -213,12 +226,12 @@ def evaluate_output(out_mean, out_std, out_pi, out_true, loss_fn, dist, z):
 
     # convert data format
     out_mean = out_mean.cpu().numpy()
-    if dist == 'norm':
+    if dist in ['norm','nb','zipoission','tnorm','lognorm']:
         out_std = out_std.cpu().numpy()
     elif dist == 'zinb':
         out_std = out_std.cpu().numpy()
         out_pi = out_pi.cpu().numpy()
-    elif dist == 'poisson':
+    elif dist in ['poisson']:
         out_std = None
         out_pi = None
     else:
@@ -232,6 +245,9 @@ def evaluate_output(out_mean, out_std, out_pi, out_true, loss_fn, dist, z):
     predict_mape = predict_mae/np.mean(out_true.flatten())
 
     lb, ub = post_process_pi(dist, out_mean, out_std, z)
-    val_mpiw, val_picp = eval_pi(lb, ub, out_true)
-        
+    if lb is not None:
+        val_mpiw, val_picp = eval_pi(lb, ub, out_true)
+    else:
+        val_mpiw = None
+        val_picp = None
     return loss/num, predict_mae.item(), predict_mape.item(), val_mpiw, val_picp   
