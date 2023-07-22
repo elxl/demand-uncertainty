@@ -6,14 +6,32 @@ from scipy.optimize import curve_fit
 import statsmodels.api as sm
 from torch_geometric.nn.models.mlp import NoneType
 from torchmetrics import MeanAbsolutePercentageError, MeanAbsoluteError
+from .distributions import zipoisson_interval, zipoisson_pmf
 
 
-def fit_dist(data, dist):
+def fit_dist(data, dist, p0=None):
 
     if dist == 'norm':
         mean = np.mean(data,axis=2)
         std = np.std(data,axis=2)
         res = [mean, std]
+    elif dist == 'nb':
+        def nb_fit(x):
+            # Define the Poisson distribution function
+            def nb_dist(x, r, p):
+                return nbinom.pmf(x, r, p)
+
+            # Fit the data to the Poisson distribution
+            if p0 is not None:
+                params, _ = curve_fit(nb_dist, range(np.max(x)+1), np.bincount(x), p0=p0, maxfev=5000, bounds=((0,0),(np.inf,1)))
+            else:
+                params, _ = curve_fit(nb_dist, range(np.max(x)+1), np.bincount(x), maxfev=5000, bounds=((0,0),(np.inf,1)))
+
+            # Retrieve the fitted lambda parameter
+            fitted_r, fitted_p = params
+
+            return fitted_r, fitted_p
+        res = np.apply_along_axis(nb_fit,axis=2,arr=data)        
     elif dist == 'poisson':
         def poisson_fit(x):
             # Define the Poisson distribution function
@@ -21,13 +39,31 @@ def fit_dist(data, dist):
                 return poisson.pmf(x, lamb)
 
             # Fit the data to the Poisson distribution
-            params, _ = curve_fit(poisson_dist, range(np.max(x)+1), np.bincount(x))
+            params, _ = curve_fit(poisson_dist, range(np.max(x)+1), np.bincount(x), bounds=((0,),(np.inf)))
 
             # Retrieve the fitted lambda parameter
             fitted_lambda = params[0]
 
             return fitted_lambda
         res = np.apply_along_axis(poisson_fit,axis=2,arr=data)
+    elif dist == 'zipoisson':
+        def zipoisson_fit(x):
+
+            # For data series with all 0
+            if np.max(x)==0:
+                return 1,1
+            # Define the Poisson distribution function
+            def zipoisson_dist(x, lambd, pi):
+                return zipoisson_pmf(x, lambd, pi)
+            # Fit the data to the Poisson distribution
+            params, _ = curve_fit(zipoisson_dist, range(np.max(x)+1), np.bincount(x), bounds=((0,0),(np.inf,1)))
+
+            # Retrieve the fitted lambda parameter
+            fitted_mu = params[0]
+            fitted_pi = params[1]
+
+            return fitted_mu,fitted_pi
+        res = np.apply_along_axis(zipoisson_fit,axis=2,arr=data)      
     elif dist == 'zinb':
         pass
 
@@ -51,11 +87,11 @@ def post_process_dist(dist, loc, scale, pi=None):
         out_predict = loc
 #         out_std = np.sqrt(loc)
     elif dist == 'zipoisson':
-        out_predict = (1-pi)*loc
+        out_predict = (1-scale)*loc
     elif dist == 'norm':
         out_predict = loc
     elif dist == 'nb':
-        out_predict = loc*(1-scale)/(scale+1e-5)
+        out_predict = loc*(1-scale)/scale
     elif dist == 'zinb':
         pass
         
@@ -77,10 +113,9 @@ def post_process_pi(dist, loc, scale, z):
     elif dist == 'laplace':
         lb, ub = laplace.interval(z, loc, scale)
     elif dist == 'poisson':
-        lb,ub = poisson.interval(z, loc) 
+        lb, ub = poisson.interval(z, loc) 
     elif dist == 'zipoisson':
-        lb = None
-        ub = None
+        lb, ub = zipoisson_interval(z, loc, scale)
     elif dist == 'norm':
         lb, ub = norm.interval(z, loc, scale)
     elif dist == 'nb':
@@ -155,7 +190,7 @@ def evaluate(net, loss_fn, adj_torch, dist, dataloader, z, device, batch_size):
         
         eval_loss += loss.item()
 
-        # Get mean and variance
+        # Get output
         if i == 0:
             if net.mult == 1:
                 test_out_mean = outputs[:,:].cpu().detach().numpy()
@@ -171,7 +206,7 @@ def evaluate(net, loss_fn, adj_torch, dist, dataloader, z, device, batch_size):
                 test_out_pi = outputs[2*batch_size:,:].cpu().detach().numpy()     
             y_eval = batch_y.cpu().numpy()
         else:
-            if outputs.shape[0]!=net.mult*batch_size:
+            if outputs.shape[0] == net.mult*batch_size:
                 if net.mult == 1:
                     test_out_mean = np.concatenate((test_out_mean, outputs[:,:].cpu().detach().numpy()), axis=0)
                     test_out_var = None
@@ -226,7 +261,7 @@ def evaluate_output(out_mean, out_std, out_pi, out_true, loss_fn, dist, z):
 
     # convert data format
     out_mean = out_mean.cpu().numpy()
-    if dist in ['norm','nb','zipoission','tnorm','lognorm']:
+    if dist in ['norm','nb','zipoisson','tnorm','lognorm']:
         out_std = out_std.cpu().numpy()
     elif dist == 'zinb':
         out_std = out_std.cpu().numpy()

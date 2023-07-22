@@ -43,9 +43,9 @@ class GCN_LSTM(nn.Module):
         ####################################
 
         # layers bringing everything together
-        if meanonly | (homo>0) | dist in ['poission']:
+        if meanonly | (homo>0) | (dist in ['poisson']):
             mult = 1
-        elif dist in ['norm','nb','zipoission','tnorm','lognorm']:
+        elif dist in ['norm','nb','zipoisson','tnorm','lognorm']:
             mult = 2
         elif dist in ['zinb']:
             mult = 3
@@ -61,7 +61,7 @@ class GCN_LSTM(nn.Module):
         # # Level of Service
         # self.los_weights_mean = nn.Parameter(torch.rand(n_time, n_stations))
 
-        if dist in ['norm','nb','zipoission','tnorm','lognorm']:
+        if dist in ['norm','nb','zipoisson','tnorm','lognorm']:
             self.recent_on_history_var = nn.Linear(hid_fc, n_stations)
             # self.weather_weights_var = nn.Parameter(torch.rand((n_time, 2*n_stations)))
         if dist in ['zinb']:
@@ -114,7 +114,7 @@ class GCN_LSTM(nn.Module):
         # weather = weather.view(batch_size, stations, 2)
         # weather_mean = self.weather_weights_mean 
 
-        if self.dist in ['norm','nb','zipoission','tnorm','lognorm']:
+        if self.dist in ['norm','nb','zipoisson','tnorm','lognorm']:
             recent_on_history_weights_var = torch.sigmoid(self.recent_on_history_var(out)).view(batch_size, stations)
             history_var = history * recent_on_history_weights_var
             # weather_var = torch.squeeze(torch.bmm(weather, torch.mm(qod, self.weather_weights_var).view(batch_size, 2, stations)))
@@ -127,16 +127,16 @@ class GCN_LSTM(nn.Module):
         # los_mean = los * torch.mm(qod, self.los_weights_mean)
 
         # Combine everything
-        if (self.meanonly)|(self.homo>0)|(self.dist in ['poission']):
+        if (self.meanonly)|(self.homo>0)|(self.dist in ['poisson']):
             gl_out = gl_out.view(batch_size, -1, 1)
             out_mean = F.softplus(gl_out[:,:,0]+history_mean)
             return out_mean
-        elif self.dist in ['norm','nb','zipoission','tnorm','lognorm']:
+        elif self.dist in ['norm','nb','zipoisson','tnorm','lognorm']:
             gl_out = gl_out.view(batch_size, -1, 2)
             out_mean = F.softplus(gl_out[:,:,0]+history_mean)
             if self.dist in ['norm','tnorm','lognorm']:
               out_var = F.softplus(gl_out[:,:,1]+history_var)
-            elif self.dist in ['nb','zipoission']:
+            elif self.dist in ['nb','zipoisson']:
               out_var = F.sigmoid(gl_out[:,:,1]+history_var) - 1e-5
 
             current_out = torch.cat((out_mean, out_var), 0)

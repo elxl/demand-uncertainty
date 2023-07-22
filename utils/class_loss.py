@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
+from torch.autograd import Variable
 from .distributions import zipoisson_prob_log
 
 
@@ -37,9 +38,12 @@ class MVELoss(nn.Module):
             loss = d.log_prob(t)
 
         elif self.dist == 'zipoisson':
-            zipped = torch.cat([loc.unsqueeze(0),scale.unsqueeze(0),t.unsqueeze(0)],dim=0)
-            loss = np.apply_along_axis(lambda x:zipoisson_prob_log(x[0],x[1],x[2]),0,zipped)
-            loss = torch.tensor(loss)
+            # zipped = torch.cat([loc.unsqueeze(0),scale.unsqueeze(0),t.unsqueeze(0)],dim=0)
+            # loss = torch.stack([
+            #     zipoisson_prob_log(x_i[0],x_i[1],x_i[2]) for i, x_i in enumerate(torch.unbind(zipped, dim=1), 0)
+            # ])
+            d = torch.distributions.poisson.Poisson(loc)
+            loss = torch.log(1-scale) + d.log_prob(t)
 
         elif (self.dist == 'norm') | (self.dist == 'norm_homo'):
             d = torch.distributions.normal.Normal(loc, scale)
