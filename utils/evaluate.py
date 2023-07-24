@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import numpy as np
-from scipy.stats import poisson, norm, laplace, lognorm, nbinom
+from scipy.stats import poisson, norm, laplace, lognorm, nbinom, truncnorm
 from scipy.optimize import curve_fit
 import statsmodels.api as sm
 from torch_geometric.nn.models.mlp import NoneType
@@ -19,7 +19,7 @@ def fit_dist(data, dist, p0=None):
         def nb_fit(x):
             # Define the Poisson distribution function
             def nb_dist(x, r, p):
-                return nbinom.pmf(x, r, p)
+                return nbinom.pmf(x, r, 1-p)
 
             # Fit the data to the Poisson distribution
             if p0 is not None:
@@ -91,7 +91,7 @@ def post_process_dist(dist, loc, scale, pi=None):
     elif dist == 'norm':
         out_predict = loc
     elif dist == 'nb':
-        out_predict = loc*(1-scale)/scale
+        out_predict = loc*(scale)/(1-scale)
     elif dist == 'zinb':
         pass
         
@@ -110,6 +110,7 @@ def post_process_pi(dist, loc, scale, z):
     elif dist == 'tnorm':
         lb, ub = norm.interval(z, loc, scale)
         lb = lb * (lb>0)
+        # lb, ub = truncnorm.interval(z, 0, np.inf, loc, scale)
     elif dist == 'laplace':
         lb, ub = laplace.interval(z, loc, scale)
     elif dist == 'poisson':
@@ -119,7 +120,7 @@ def post_process_pi(dist, loc, scale, z):
     elif dist == 'norm':
         lb, ub = norm.interval(z, loc, scale)
     elif dist == 'nb':
-        lb, ub = nbinom.interval(z, loc, scale)
+        lb, ub = nbinom.interval(z, loc, 1-scale)
     elif dist == 'zinb':
         lb = None
         ub = None
