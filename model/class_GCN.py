@@ -45,7 +45,7 @@ class GCN_LSTM(nn.Module):
         # layers bringing everything together
         if meanonly | (homo>0) | (dist in ['poisson']):
             mult = 1
-        elif dist in ['norm','nb','zipoisson','tnorm','lognorm']:
+        elif dist in ['norm','nb','tnorm','zipoisson','tnorm','lognorm']:
             mult = 2
         elif dist in ['zinb']:
             mult = 3

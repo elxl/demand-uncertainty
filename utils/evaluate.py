@@ -15,6 +15,9 @@ def fit_dist(data, dist, p0=None):
         mean = np.mean(data,axis=2)
         std = np.std(data,axis=2)
         res = [mean, std]
+    elif dist == 'tnorm':
+        mean, std = truncnorm.fit(data, loc=np.mean(data), scale=np.std(data), a=0, b=200)
+        res = [mean, std]
     elif dist == 'nb':
         def nb_fit(x):
             # Define the Poisson distribution function
