@@ -18,3 +18,15 @@ class NY_Data(Dataset):
 		sample = tuple([self.x[idx],self.y[idx],self.history[idx],self.weather[idx],self.los[idx]])
 
 		return sample
+	
+class NY_All(Dataset):
+
+	def __init__(self, x, y):
+		self.x = x
+		self.y = y
+
+	def __len__(self):
+		return len(self.y)
+	
+	def __getitem__(self, idx):
+		return (self.x[idx], self.y[idx])

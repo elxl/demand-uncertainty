@@ -5,7 +5,8 @@ import numpy as np
 import pandas as pd
 import pickle as pkl
 from torch.utils.data import DataLoader, Subset
-from .class_dataset import NY_Data
+from sklearn.model_selection import train_test_split
+from .class_dataset import NY_Data, NY_All
 
     
 def prepare_input(x, y, adj, nadj, history, weather, los, device, train=0.8, val=0.1, test=0.1, random=False, batch_size = 32):
@@ -80,3 +81,18 @@ def prepare_input(x, y, adj, nadj, history, weather, los, device, train=0.8, val
     adj_torch = adj_torch.to(device)
 
     return train_loader,val_loader,test_loader,adj_torch
+
+def prepare_input_LSTM(x, y, train=0.8, val=0.1, test=0.1, batch_size=32):
+   # Split dataset
+    x_train, x_temp, y_train, y_temp = train_test_split(x, y, test_size=(val+test), random_state=42)
+    x_val, x_test, y_val, y_test = train_test_split(x_temp, y_temp, test_size=test/(val+test), random_state=42)
+
+    train_dataset = NY_All(x_train, y_train)
+    val_dataset = NY_All(x_val, y_val) 
+    test_dataset = NY_All(x_test, y_test)
+
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
+    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
+
+    return train_loader, val_loader, test_loader

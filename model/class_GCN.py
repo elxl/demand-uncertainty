@@ -97,7 +97,7 @@ class GCN_LSTM(nn.Module):
         out = torch.squeeze(out[:,-1,:]) # only take the last timestep
 
         # Apply final fully connected layer
-        out = l_in = F.relu(self.fc4(F.dropout(F.relu(self.fc3(out)), self.dropout, training=self.training)))
+        out = F.relu(self.fc4(F.dropout(F.relu(self.fc3(out)), self.dropout, training=self.training)))
 
         ####################################
         #-------- Component layers --------#

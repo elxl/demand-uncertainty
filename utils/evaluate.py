@@ -6,7 +6,7 @@ from scipy.optimize import curve_fit
 import statsmodels.api as sm
 from torch_geometric.nn.models.mlp import NoneType
 from torchmetrics import MeanAbsolutePercentageError, MeanAbsoluteError
-from .distributions import zipoisson_interval, zipoisson_pmf
+from .distributions import zipoisson_interval, zipoisson_pmf, nb_interval
 
 
 def fit_dist(data, dist, p0=None):
@@ -16,7 +16,11 @@ def fit_dist(data, dist, p0=None):
         std = np.std(data,axis=2)
         res = [mean, std]
     elif dist == 'tnorm':
-        mean, std = truncnorm.fit(data, loc=np.mean(data), scale=np.std(data), a=0, b=200)
+        # def tn_fit(x):
+        #     return truncnorm.fit(x, 0, 200, loc=np.mean(x), scale=np.std(x))
+        # res = np.apply_along_axis(tn_fit,axis=2,arr=data)
+        mean = np.mean(data,axis=2)
+        std = np.std(data,axis=2)
         res = [mean, std]
     elif dist == 'nb':
         def nb_fit(x):
@@ -111,9 +115,10 @@ def post_process_pi(dist, loc, scale, z):
         lb, ub = lognorm_dist.interval(z)
         # lb, ub = lognorm.interval(z, loc, scale)
     elif dist == 'tnorm':
-        lb, ub = norm.interval(z, loc, scale)
-        lb = lb * (lb>0)
-        # lb, ub = truncnorm.interval(z, 0, np.inf, loc, scale)
+        # lb, ub = norm.interval(z, loc, scale)
+        # lb = lb * (lb>0)
+        lb, ub = truncnorm.interval(z, -loc/scale, np.inf, loc, scale)
+        # lb, ub = nb_interval(z, 0, np.inf, loc, scale)
     elif dist == 'laplace':
         lb, ub = laplace.interval(z, loc, scale)
     elif dist == 'poisson':

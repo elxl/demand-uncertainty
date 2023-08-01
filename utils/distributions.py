@@ -1,6 +1,6 @@
 import torch
 import numpy as np
-from scipy.stats import poisson, nbinom
+from scipy.stats import poisson, nbinom, norm
 
 def zipoisson_pmf(x, mu, pi):
     if x == 0:
@@ -55,3 +55,14 @@ def zinb_prob(x, r, p, pi):
         return pi + (1-pi)*nbinom.pmf(x, r, p)
     else:
         return (1-pi)*nbinom.pmf(x, r, p)
+
+def nb_ppf(z, a, b, loc, scale):
+    pa = norm.cdf(a, loc, scale)
+    pb = norm.cdf(b, loc, scale)
+
+    return norm.ppf(pa+z*(pb-pa))*scale + loc
+
+def nb_interval(z, a, b, loc, scale):
+    lb = (1-z)/2
+    ub = (1+z)/2
+    return nb_ppf(lb, a, b, loc, scale), nb_ppf(ub, a, b, loc, scale)

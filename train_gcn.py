@@ -45,7 +45,7 @@ loss_fn = MVELoss(dist)
 optimizer = optim.Adam(net.parameters(), lr=learning_rate, weight_decay=weight_decay)
 
 # Read in and prepare dataset
-data = data = np.load(filepath)
+data = np.load(filepath)
 x = data['x']
 y = data['y']
 adj = pd.read_csv(adjfile)
