@@ -19,6 +19,7 @@ class NN_LSTM(nn.Module):
         # Fully connected layers
         self.fc1 = nn.Linear(n_features, hid_fc)
         self.fc2 = nn.Linear(hid_fc, hid_g)
+        # self.fc1 = nn.Linear(n_features, hid_g)
 
         # LSTM
         self.lstm = nn.LSTM(hid_g, hid_l)
@@ -26,6 +27,7 @@ class NN_LSTM(nn.Module):
         # Fully connected layers
         self.fc3 = nn.Linear(hid_l, hid_fc)
         self.fc4 = nn.Linear(hid_fc, hid_fc)
+        # self.fc2 = nn.Linear(hid_l, hid_fc)
 
         self.final = nn.Linear(hid_fc, 2)
 
@@ -35,6 +37,7 @@ class NN_LSTM(nn.Module):
 
         # Apply fully connected layers
         x = F.relu(self.fc2(F.dropout(F.relu(self.fc1(x)), self.dropout, training=self.training)))
+        # x = F.dropout(F.relu(self.fc1(x)), self.dropout, training=self.training)
 
         # Apply LSTM layer
         out, _ = self.lstm(x)
@@ -42,9 +45,15 @@ class NN_LSTM(nn.Module):
 
         # Apply final fully connected layer
         out = F.relu(self.fc4(F.dropout(F.relu(self.fc3(out)), self.dropout, training=self.training)))
+        # out = F.dropout(F.relu(self.fc2(out)), self.dropout, training=self.training)
         out = self.final(out)
 
-        out_mean = F.softplus(out[:,:,0])
-        out_var = F.softplus(out[:,:,1])
+        out_mean = F.softplus(out[:,0])
+        if self.dist in ['norm']:
+            out_var = F.softplus(out[:,1])
+        elif self.dist in ['nb']:
+            out_var = F.sigmoid(out[:,1]) - 1e-5
+        elif self.dist == 'poisson':
+            return out_mean
         current_out = torch.cat((out_mean, out_var), 0)
         return current_out

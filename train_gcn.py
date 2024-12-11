@@ -27,9 +27,9 @@ dist = 'tnorm'
 z = 0.95
 
 # Define other parameters
-SAVEPATH = "../weights/model.pt"
-filepath = '../data/processed/1906_diff.npz'
-adjfile = '../data/processed/adjlist.csv'
+SAVEPATH = "weights/model.pt"
+filepath = 'data/processed/1906_diff.npz'
+adjfile = 'data/processed/adjlist.csv'
 
 
 device = torch.device('cuda:0' if torch.cuda.is_available() else "cpu")

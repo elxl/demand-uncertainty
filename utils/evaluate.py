@@ -295,3 +295,70 @@ def evaluate_output(out_mean, out_std, out_pi, out_true, loss_fn, dist, z):
         val_mpiw = None
         val_picp = None
     return loss/num, predict_mae.item(), predict_mape.item(), val_mpiw, val_picp   
+
+
+def evaluate_sum(net, loss_fn, dist, dataloader, z, device, batch_size):
+
+    net.eval()
+    eval_loss = 0
+    eval_num = len(dataloader.dataset)
+
+    for i, testdata in enumerate(dataloader):
+        batch_x, batch_y = testdata
+
+        batch_x = batch_x.float()
+        batch_y = torch.squeeze(batch_y).float()
+
+        batch_x, batch_y = batch_x.to(device), batch_y.to(device)
+
+        outputs = net(batch_x)
+        if dist == 'poisson':
+            output_loc = outputs
+            output_scale = None
+        else:
+            if outputs.shape[0]!=2*batch_size:
+                batch_new = int((outputs.shape[0])/2)
+                output_loc = outputs[:batch_new]
+                output_scale = outputs[batch_new:]         
+            else:
+                output_loc = outputs[:batch_size]
+                output_scale = outputs[batch_size:]
+        loss = loss_fn(output_loc, output_scale, batch_y)
+        
+        eval_loss += loss.item()
+
+        # Get output
+        if i == 0:
+            if dist == 'poisson':
+                test_out_mean = outputs.cpu().detach().numpy()
+            else:
+                test_out_mean = outputs[:batch_size].cpu().detach().numpy()
+                test_out_var = outputs[batch_size:].cpu().detach().numpy() 
+            y_eval = batch_y.cpu().numpy()
+        else:
+            if dist == 'poisson':
+                test_out_mean = np.concatenate((test_out_mean, outputs.cpu().detach().numpy()), axis=0)
+                test_out_var = None
+            else:
+                if outputs.shape[0] == 2*batch_size:
+                    test_out_mean = np.concatenate((test_out_mean, outputs[:batch_size].cpu().detach().numpy()), axis=0)
+                    test_out_var = np.concatenate((test_out_var, outputs[batch_size:].cpu().detach().numpy()), axis=0)                 
+                else:
+                    batch_new = int((outputs.shape[0])/2)
+                    test_out_mean = np.concatenate((test_out_mean, outputs[:batch_new].cpu().detach().numpy()), axis=0)
+                    test_out_var = np.concatenate((test_out_var, outputs[batch_new:].cpu().detach().numpy()), axis=0)
+            y_eval = np.concatenate((y_eval, batch_y.cpu().numpy()), axis=0)        
+    val_out_predict = post_process_dist(dist, test_out_mean, test_out_var)
+
+    # Point error
+    mae = MeanAbsoluteError()
+    val_mae = mae(torch.from_numpy(val_out_predict.flatten()), torch.from_numpy(y_eval.flatten()))
+    val_mape = val_mae/np.mean(y_eval.flatten())
+
+    lb, ub = post_process_pi(dist, test_out_mean, test_out_var, z)
+    if lb is not None:
+        val_mpiw, val_picp = eval_pi(lb, ub, y_eval)
+    else:
+        val_mpiw = None
+        val_picp = None
+    return test_out_mean, test_out_var, y_eval, eval_loss/eval_num, val_mae.item(), val_mape.item(), val_mpiw, val_picp 

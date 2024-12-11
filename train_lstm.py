@@ -3,18 +3,20 @@ import torch.nn as nn
 import torch.optim as optim
 import numpy as np
 import pandas as pd
+import random
 from torch.utils.data import Dataset, DataLoader
 
 from utils.class_loss import MVELoss
 from model.class_LSTM import NN_LSTM
 from utils.prepare_data import prepare_input_LSTM
+from utils.evaluate import evaluate_sum
 
 # Define hyperparameters
 n_features = 2
-n_time = 12
-hid_g = 64
-hid_fc = 64
-hid_l = 64
+n_time = 6
+hid_g = 32
+hid_fc = 32
+hid_l = 32
 batch_size = 32
 learning_rate = 0.001
 weight_decay = 0.001
@@ -24,8 +26,8 @@ dist = 'norm'
 z = 0.95
 
 # Define other parameters
-SAVEPATH = "../weights/sum_norm.pt"
-filepath = '../data/processed/1906_diff.npz'
+SAVEPATH = "weights/model_sum_norm.pt"
+filepath = 'data/processed/1906_sum.npz'
 
 
 device = torch.device('cuda:0' if torch.cuda.is_available() else "cpu")
@@ -53,6 +55,13 @@ batch_number = len(train_loader)
 print('Start training ...')
 print(f"Training sample batches:{batch_number}")
 
+seed = 42
+torch.manual_seed(seed)
+torch.cuda.manual_seed(seed)
+torch.cuda.manual_seed_all(seed)
+np.random.seed(seed)
+random.seed(seed)
+
 # Training loop
 loss_history = []
 loss_eval = []
@@ -79,11 +88,11 @@ for epoch in range(1,num_epochs+1):
         # Compute the loss
         if outputs.shape[0]!=2*batch_size:
             batch_new = int((outputs.shape[0])/2)
-            output_loc = outputs[:batch_new,:]
-            output_scale = outputs[batch_new:,:]         
+            output_loc = outputs[:batch_new]
+            output_scale = outputs[batch_new:]         
         else:
-            output_loc = outputs[:batch_size,:]
-            output_scale = outputs[batch_size:,:]
+            output_loc = outputs[:batch_size]
+            output_scale = outputs[batch_size:]
         loss = loss_fn(output_loc, output_scale, batch_y)
 
         # Backward pass and optimization
@@ -113,11 +122,11 @@ for epoch in range(1,num_epochs+1):
         outputs = net(batch_x)
         if outputs.shape[0]!=2*batch_size:
             batch_new = int((outputs.shape[0])/2)
-            output_loc = outputs[:batch_new,:]
-            output_scale = outputs[batch_new:,:]         
+            output_loc = outputs[:batch_new]
+            output_scale = outputs[batch_new:]         
         else:
-            output_loc = outputs[:batch_size,:]
-            output_scale = outputs[batch_size:,:]
+            output_loc = outputs[:batch_size]
+            output_scale = outputs[batch_size:]
         loss = loss_fn(output_loc, output_scale, batch_y)
 
         eval_loss += loss.item()
@@ -139,3 +148,9 @@ for epoch in range(1,num_epochs+1):
             }, SAVEPATH)
 
     print('Ep:', epoch, '| Average loss;', running_loss/train_num, '| Evaluation loss:',eval_loss/eval_num)
+
+# Test
+print('Testing ...')
+loss, mae, mape, mpiw, picp = evaluate_sum(net, loss_fn, dist, test_loader, z, device, batch_size)
+print('Average loss;', loss, '| MAE:',mae, '| MAPE:',mape, '| MPIW',mpiw, '| PICP:',picp)
+
